@@ -10,6 +10,7 @@ output: github_document
 library(tidyverse)
 library(rvest)
 library(httr)
+library(ggpubr)
 
 knitr::opts_chunk$set(
   fig.width = 7,
@@ -90,7 +91,7 @@ post2 %>% select(city_state, estimate, conf.low, conf.high) %>%
 
 
 ## Problem 2 
-```{r}
+```{r, message = F, warning = F}
 
 exp <- tibble(filename = list.files('./data')) 
 exp_paths <- exp  %>% mutate(filepath = paste0("data/", filename))
@@ -110,14 +111,18 @@ data1 <- all_files %>%
   select(-(filename:data)) %>% 
   select(id, everything())
 
-data_long <- data1 %>% select(name, week_1:week_8) %>% 
+data_long <- data1 %>% select(name, week_1:week_8, arm) %>% 
+  pivot_longer(
+    cols = c(week_1, week_2, week_3, week_4, week_5, week_6, week_7, week_8), 
+    names_to = "week", 
+    values_to = "value")
+data1 %>% select(name, week_1:week_8, arm ) %>% 
   pivot_longer(
     cols = c(week_1, week_2, week_3, week_4, week_5, week_6, week_7, week_8), 
     names_to = "week", 
     values_to = "value")
 
-
-data_long %>%  group_by(name) %>%  
+by_arm <- data_long %>%  group_by(name) %>%  
   ggplot(aes( x= week, y = value, color = as.factor(name))) + 
   geom_line(aes(group= name )) + 
   scale_x_discrete( breaks = c( )) + 
@@ -126,8 +131,23 @@ data_long %>%  group_by(name) %>%
   scale_color_viridis_d() + 
    labs(
     color = "Subjects"
-  )
+  ) + 
+  facet_wrap(~arm)
+
+combined <- data_long %>%  group_by(name) %>%  
+  ggplot(aes( x= week, y = value, color = as.factor(name))) + 
+  geom_line(aes(group= name )) + 
+  scale_x_discrete( breaks = c( )) + 
+  xlab("Time") + 
+  ylab("Value") + 
+  scale_color_viridis_d() + 
+labs(
+    color = "Subjects"
+  ) 
+
+ggarrange(combined, by_arm, common.legend = TRUE, legend = "bottom")
 ```
+The control group values are lower than the experimental values. There are fluctuations over time, but the experimental group increase while the controls stay relatively the same. 
 
 ## Problem 3 
 ```{r}
@@ -157,6 +177,8 @@ fill_in = function(vector) {
 
 iris_df<- map_df(iris_with_missing, fill_in) 
 
+glimpse(iris_df)
+map(iris_df, Hmisc::describe)
 ```
 
 
