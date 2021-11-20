@@ -1,0 +1,162 @@
+---
+title: "p8105_hw5_kb3066"
+author: "Kaila Boyer"
+date: "11/15/2021"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(rvest)
+library(httr)
+
+knitr::opts_chunk$set(
+  fig.width = 7,
+  fig.asp = .7,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis",
+  scale_colour_discrete = scale_colour_viridis_d,
+scale_fill_discrete = scale_fill_viridis_d
+)
+```
+
+## Problem 1 
+
+The raw data includes the column names in the first row and all entries in the lines below. Entries are separated by commas and they do not align into neat columns so it is difficult to see what each is representing. Collected data includes city, date, location coordinates, disposition, along with victim's information (name, sex, age, race)
+```{r, message = F}
+wash_post <- "https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv"
+
+post_df <- wash_post %>% url %>% read_csv()
+
+post_df <- post_df %>% mutate(
+  city_state = str_c(city, state, sep = ",")
+)
+
+post_df <- post_df %>% select(city_state, disposition) %>% 
+  mutate(disp = if_else(disposition == "Open/No arrest", "unsolved", 
+                if_else(disposition == "Closed without arrest", "unsolved", "solved"))) %>% 
+  group_by( disp, city_state) %>% 
+  count() %>% 
+  pivot_wider( 
+    names_from = "disp", 
+    values_from = "n") %>% 
+  mutate(total = sum(c_across(solved:unsolved), na.rm = T)) 
+post_df %>% 
+  knitr::kable(caption = "Unsolved cases by state")
+```
+
+```{r, message = F}
+baltimore <- post_df %>% filter(city_state == "Baltimore,MD") 
+
+prop.test(baltimore$unsolved, baltimore$total) %>% 
+  broom::tidy() %>% 
+  select(estimate, conf.low, conf.high) %>% 
+  knitr::kable()
+```
+
+```{r, message = F, warning= F}
+nest_post1 <- post_df %>% nest(city_state)
+prop_test = function(var_numerator, var_denominator) {
+  
+  try(prop.test(var_numerator, var_denominator) %>% 
+    broom::tidy() %>% 
+    select(estimate, conf.low, conf.high), silent = TRUE)
+  
+} 
+post2 <- nest_post1 %>% 
+  mutate(cis = map2(unsolved, total, prop_test)) %>% 
+  unnest()  
+
+post2 %>% select(city_state, estimate, conf.low, conf.high) %>% knitr::kable()
+
+post2 %>% select(city_state, estimate, conf.low, conf.high) %>%
+  arrange(desc(estimate) )%>% 
+  ggplot(aes(x = reorder(city_state, -estimate), y = estimate)) + 
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high))+
+  coord_flip() +
+  theme( plot.title = element_text(hjust = 0.5)) + 
+  xlab("City") + 
+  ylab("Proportion") +
+  ggtitle("Proportion of Unsolved Homicides") 
+```
+
+
+## Problem 2 
+```{r}
+
+exp <- tibble(filename = list.files('./data')) 
+exp_paths <- exp  %>% mutate(filepath = paste0("data/", filename))
+
+
+all_files <- exp_paths %>% mutate(data = map(exp_paths$filepath, read_csv)) 
+
+all_files <- all_files %>% 
+  mutate( arm = ifelse(startsWith(all_files$filename, "con"), "control", "experimental"), 
+          id = str_sub(filename, start = 6L, end = -5L), 
+          name = str_sub(filename, end = -5L))  
+
+
+
+data1 <- all_files %>% 
+  bind_cols(map_df(all_files$data, unlist)) %>% 
+  select(-(filename:data)) %>% 
+  select(id, everything())
+
+data_long <- data1 %>% select(name, week_1:week_8) %>% 
+  pivot_longer(
+    cols = c(week_1, week_2, week_3, week_4, week_5, week_6, week_7, week_8), 
+    names_to = "week", 
+    values_to = "value")
+
+
+data_long %>%  group_by(name) %>%  
+  ggplot(aes( x= week, y = value, color = as.factor(name))) + 
+  geom_line(aes(group= name )) + 
+  scale_x_discrete( breaks = c( )) + 
+  xlab("Time") + 
+  ylab("Value") + 
+  scale_color_viridis_d() + 
+   labs(
+    color = "Subjects"
+  )
+```
+
+## Problem 3 
+```{r}
+set.seed(10)
+
+iris_with_missing = iris %>% 
+  map_df(~replace(.x, sample(1:150, 20), NA)) %>%
+  mutate(Species = as.character(Species))
+
+fill_in = function(vector) {
+  
+  if(is.numeric(vector)) {
+    
+    vector = ifelse(is.na(vector), mean(vector, na.rm = TRUE), vector)
+    
+    }
+  
+  if(is.character(vector)) {
+    
+    vector = ifelse(is.na(vector), "virginica", vector)
+    
+  }
+  
+  return(vector)
+  
+}
+
+iris_df<- map_df(iris_with_missing, fill_in) 
+
+```
+
+
